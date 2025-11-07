@@ -1,0 +1,63 @@
+version: "3.9"
+services:
+  db:
+    image: mysql:8.0
+    container_name: mysql_db
+    environment:
+      - MYSQL_ROOT_PASSWORD=1234
+      - MYSQL_DATABASE=url
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - phishing_net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  backend:
+    build:
+      context: ./backend
+    container_name: flask_backend
+    ports:
+      - "5000:8081"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      - DB_HOST=db
+      - DB_PORT=3306
+      - DB_USER=root
+      - DB_PASSWORD=1234
+      - DB_NAME=url
+      - FRONTEND_ORIGINS=http://localhost:3000,http://localhost:5173
+    networks:
+      - phishing_net
+    volumes:
+      - ./backend/model:/app/model
+      - ./backend/logs:/app/logs
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: react_frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - phishing_net
+
+networks:
+  phishing_net:
+    driver: bridge
+
+volumes:
+  mysql_data:

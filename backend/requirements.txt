@@ -1,0 +1,11 @@
+flask
+flask-cors
+scikit-learn
+joblib
+tldextract
+numpy
+pytest
+requests
+python-dotenv
+xgboost
+mysql-connector-python

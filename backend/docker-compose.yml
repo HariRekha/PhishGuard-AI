@@ -1,0 +1,13 @@
+version: "3.8"
+services:
+  backend:
+    build: .
+    ports:
+      - "8081:8081"
+    environment:
+      - X_ADMIN_TOKEN=changeme
+      - FRONTEND_ORIGINS=http://localhost:5173,http://localhost:3000
+    volumes:
+      - ./model:/app/model
+      - ./sample_data:/app/sample_data
+      - ./predictions.db:/app/predictions.db
