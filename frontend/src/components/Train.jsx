@@ -1,20 +1,16 @@
 import React, { useState } from "react";
 import { postTrain } from "../services/api";
+import ConfirmDialog from "./ConfirmDialog";
 
 const Train = ({ onTrained }) => {
-  const adminToken = import.meta.env.VITE_ADMIN_TOKEN || "";
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");                 // added
   const [errorDetails, setErrorDetails] = useState(null); // added
   const [showErrDetails, setShowErrDetails] = useState(false); // added
-
-  if (!adminToken) {
-    return null;
-  }
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   async function handleTrain() {
-    if (!confirm("Trigger retraining on the backend? This may take some time.")) return;
     setLoading(true);
     setMessage("");
     setError("");
@@ -36,22 +32,11 @@ const Train = ({ onTrained }) => {
 
   return (
     <div className="card">
-      <h3>Admin / Training</h3>
-      <p className="small">
-        A training button is available because an admin token was provided to the frontend (VITE_ADMIN_TOKEN). This calls the backend <code>/train</code> endpoint with the token.
-      </p>
+      <h3>Admin • Model Retraining</h3>
+      <p className="small">Triggers retraining on the backend. Use only when needed.</p>
       <div style={{ display: "flex", gap: 8 }}>
-        <button className="button" onClick={handleTrain} disabled={loading}>
+        <button className="button secondary" onClick={() => setConfirmOpen(true)} disabled={loading}>
           {loading ? "Training..." : "Trigger retrain"}
-        </button>
-        <button
-          className="button secondary"
-          onClick={() => {
-            navigator.clipboard.writeText(adminToken);
-            alert("Admin token copied to clipboard");
-          }}
-        >
-          Copy token
         </button>
       </div>
       {message && <div style={{ marginTop: 8 }} className="small">{message}</div>}
@@ -89,8 +74,22 @@ const Train = ({ onTrained }) => {
         </div>
       )}
       <div style={{ marginTop: 8 }} className="small">
-        Note: Avoid exposing admin tokens in production builds. Prefer server-side automation for training.
+        Note: For production, replace demo credentials with real authentication.
       </div>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        title="Trigger model retraining"
+        message="This will retrain the model on the backend and may take time. Continue?"
+        confirmText="Retrain"
+        danger={false}
+        busy={loading}
+        onCancel={() => setConfirmOpen(false)}
+        onConfirm={async () => {
+          setConfirmOpen(false);
+          await handleTrain();
+        }}
+      />
     </div>
   );
 };

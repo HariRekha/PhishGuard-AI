@@ -50,6 +50,7 @@ function getVerdictInfo(probabilityPercent, prediction, modelUnavailable) {
 
 const ResultCard = ({ result }) => {
   const [showRaw, setShowRaw] = useState(false);
+  const [toast, setToast] = useState("");
 
   if (!result) {
     return (
@@ -64,27 +65,28 @@ const ResultCard = ({ result }) => {
   const modelUnavailable = result.prediction === "model_not_loaded";
   const hasProbability = typeof result.probability === "number" && Number.isFinite(result.probability);
   const modelAcc = typeof result.model_accuracy === "number" ? `${(result.model_accuracy * 100).toFixed(2)}%` : null;
+  const device = result.device || null;
+  const ip = result.ip || null;
 
   if (modelUnavailable) {
     return (
-      <div className="card">
-        <h3>Verdict</h3>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span className="badge warn">Model offline</span>
+      <div className="card result-card">
+        <div className="result-header">
           <div>
-            <div className="small">
-              {result.message || "No trained model is currently loaded on the backend."}
-            </div>
-            <div className="small">
-              Train the backend (POST /train) and refresh the page once the model is ready.
-            </div>
-            <div className="small">Model: {result.model_version || "unknown"}</div>
-            {modelAcc && <div className="small">Model accuracy: {modelAcc}</div>}
+            <h3 style={{ margin: 0 }}>Verdict</h3>
+            <div className="small">Model is not loaded on the backend.</div>
           </div>
+          <span className="badge warn">Offline</span>
+        </div>
+
+        <div className="result-meta">
+          <div className="small">{result.message || "No trained model is currently loaded on the backend."}</div>
+          <div className="small">Model: {result.model_version || "unknown"}{modelAcc ? ` • Accuracy: ${modelAcc}` : ""}</div>
+          {(device || ip) && <div className="small">Client: {device || "unknown"}{ip ? ` • ${ip}` : ""}</div>}
         </div>
         {Object.keys(features).length > 0 && (
           <>
-            <h4 style={{ marginTop: 16 }}>Extracted features (model offline)</h4>
+            <h4 style={{ marginTop: 16 }}>Extracted features</h4>
             <div className="feature-grid">
               {Object.keys(features).map((k) => (
                 <div key={k} className="feature">
@@ -95,25 +97,13 @@ const ResultCard = ({ result }) => {
             </div>
           </>
         )}
-        <div style={{ marginTop: 12 }}>
+
+        <div className="result-actions">
           <button className="button secondary" onClick={() => setShowRaw((s) => !s)}>
-            {showRaw ? "Hide" : "Show"} raw response
+            {showRaw ? "Hide" : "Show"} raw
           </button>
         </div>
-        {showRaw && (
-          <pre
-            style={{
-              marginTop: 12,
-              maxHeight: 300,
-              overflow: "auto",
-              background: "#f3f6ff",
-              padding: 12,
-              borderRadius: 8
-            }}
-          >
-            {JSON.stringify(result, null, 2)}
-          </pre>
-        )}
+        {showRaw && <pre className="result-raw">{JSON.stringify(result, null, 2)}</pre>}
       </div>
     );
   }
@@ -128,9 +118,15 @@ const ResultCard = ({ result }) => {
   const phishingDisplay = phishingPercent !== null ? `${phishingPercent}%` : "Unavailable";
   const confidenceDisplay = confidencePercent !== null ? `${confidencePercent}%` : "Unavailable";
 
-  function copyJSON() {
-    navigator.clipboard.writeText(JSON.stringify(result, null, 2));
-    alert("Result JSON copied to clipboard");
+  async function copyJSON() {
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(result, null, 2));
+      setToast("Copied JSON to clipboard");
+      setTimeout(() => setToast(""), 1600);
+    } catch {
+      setToast("Copy failed (clipboard permission)");
+      setTimeout(() => setToast(""), 1800);
+    }
   }
 
   function downloadJSON() {
@@ -141,29 +137,37 @@ const ResultCard = ({ result }) => {
     a.download = "prediction.json";
     a.click();
     URL.revokeObjectURL(url);
+    setToast("Downloaded JSON");
+    setTimeout(() => setToast(""), 1400);
   }
 
   return (
-    <div className="card">
-      <h3>Verdict</h3>
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <div style={{ fontSize: 20 }}>
-          <span className={`badge ${verdict.badgeClass}`}>{verdict.badgeText}</span>
-        </div>
+    <div className="card result-card">
+      <div className="result-header">
         <div>
-          <div className="small">
-            Phishing likelihood: <strong>{phishingDisplay}</strong>
-          </div>
-          {hasProbability && (
-            <div className="small">
-              Model confidence: <strong>{confidenceDisplay}</strong>
-            </div>
-          )}
-          <div className="small">Model: {result.model_version || "unknown"}</div>
-          {modelAcc && <div className="small">Model accuracy: {modelAcc}</div>}
+          <h3 style={{ margin: 0 }}>Verdict</h3>
+          <div className="small">{verdict.description}</div>
+        </div>
+        <span className={`badge ${verdict.badgeClass}`}>{verdict.badgeText}</span>
+      </div>
+
+      <div className="metric-grid">
+        <div className="metric">
+          <div className="small">Phishing likelihood</div>
+          <div className="metric-value">{phishingDisplay}</div>
+        </div>
+        <div className="metric">
+          <div className="small">Model confidence</div>
+          <div className="metric-value">{hasProbability ? confidenceDisplay : "Unavailable"}</div>
         </div>
       </div>
-      <div className="result-legend" style={{ marginTop: 12 }}>
+
+      <div className="result-meta">
+        <div className="small">Model: {result.model_version || "unknown"}{modelAcc ? ` • Accuracy: ${modelAcc}` : ""}</div>
+        {(device || ip) && <div className="small">Client: {device || "unknown"}{ip ? ` • ${ip}` : ""}</div>}
+      </div>
+
+      <div className="result-why">
         <strong>Why:</strong> {whyText || "No additional explanation available."}
       </div>
       {modelUnavailable && (
@@ -191,7 +195,7 @@ const ResultCard = ({ result }) => {
           );
         })}
       </div>
-      <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
+      <div className="result-actions">
         <button className="button secondary" onClick={() => setShowRaw((s) => !s)}>
           {showRaw ? "Hide" : "Show"} raw
         </button>
@@ -201,21 +205,9 @@ const ResultCard = ({ result }) => {
         <button className="button secondary" onClick={downloadJSON}>
           Download JSON
         </button>
+        {toast && <span className="toast">{toast}</span>}
       </div>
-      {showRaw && (
-        <pre
-          style={{
-            marginTop: 12,
-            maxHeight: 300,
-            overflow: "auto",
-            background: "#f3f6ff",
-            padding: 12,
-            borderRadius: 8
-          }}
-        >
-          {JSON.stringify(result, null, 2)}
-        </pre>
-      )}
+      {showRaw && <pre className="result-raw">{JSON.stringify(result, null, 2)}</pre>}
     </div>
   );
 };

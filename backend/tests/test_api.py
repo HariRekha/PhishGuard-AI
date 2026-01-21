@@ -21,16 +21,20 @@ def test_predict_no_model(client, monkeypatch):
     p = MODEL_FILE
     moved = False
     temp = None
-    if os.path.exists(p):
-        temp = tempfile.NamedTemporaryFile(delete=False)
-        temp.close()
-        os.rename(p, temp.name)
-        moved = True
-    load_model()
-    resp = client.post("/predict", json={"url":"http://example.com/login"})
-    assert resp.status_code == 200
-    j = resp.get_json()
-    assert j["prediction"] == "model_not_loaded"
-    if moved:
-        os.rename(temp.name, p)
+    try:
+        if os.path.exists(p):
+            # On Windows, os.rename cannot move across drives. Keep temp on same drive.
+            temp = tempfile.NamedTemporaryFile(delete=False, dir=os.path.dirname(p))
+            temp.close()
+            os.rename(p, temp.name)
+            moved = True
+
         load_model()
+        resp = client.post("/predict", json={"url": "http://example.com/login"})
+        assert resp.status_code == 200
+        j = resp.get_json()
+        assert j["prediction"] == "model_not_loaded"
+    finally:
+        if moved and temp and os.path.exists(temp.name):
+            os.rename(temp.name, p)
+            load_model()

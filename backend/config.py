@@ -5,7 +5,17 @@ BASE_DIR = Path(__file__).resolve().parent
 MODEL_DIR = BASE_DIR / "model"
 MODEL_FILE = MODEL_DIR / "model.joblib"
 DB_FILE = BASE_DIR / "predictions.db"
-ADMIN_TOKEN = os.getenv("X_ADMIN_TOKEN", "changeme")
+ADMIN_TOKEN = os.getenv("X_ADMIN_TOKEN", "")
+
+# Simple role-based auth (for demo/dev)
+AUTH_SECRET = os.getenv("AUTH_SECRET", "dev-secret-change-me")
+AUTH_TOKEN_TTL_SECONDS = int(os.getenv("AUTH_TOKEN_TTL_SECONDS", "604800"))  # 7 days
+
+ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
+
+USER_USERNAME = os.getenv("USER_USERNAME", "user")
+USER_PASSWORD = os.getenv("USER_PASSWORD", "user123")
 FRONTEND_ORIGINS = [
     origin.strip()
     for origin in os.getenv(

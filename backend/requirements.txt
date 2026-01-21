@@ -9,3 +9,4 @@ requests
 python-dotenv
 xgboost
 mysql-connector-python
+bcrypt

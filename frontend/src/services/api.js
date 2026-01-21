@@ -1,15 +1,46 @@
 const fallbackBase = (() => {
   if (typeof window === "undefined") {
-    return "http://localhost:5000";
+    return "http://localhost:8081";
   }
   const host = window.location.hostname || "localhost";
   const protocol = window.location.protocol || "http:";
-  return `${protocol}//${host}:5000`;
+  return `${protocol}//${host}:8081`;
 })();
 const API_BASE = (
   import.meta.env.VITE_API_BASE_URL || fallbackBase
 ).replace(/\/$/, "");
 const ADMIN_TOKEN = import.meta.env.VITE_ADMIN_TOKEN || "";
+
+const AUTH_STORAGE_KEY = "phishing_auth";
+
+export function getAuth() {
+  try {
+    const raw = localStorage.getItem(AUTH_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setAuth(auth) {
+  try {
+    if (!auth) {
+      localStorage.removeItem(AUTH_STORAGE_KEY);
+      return;
+    }
+    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(auth));
+  } catch {
+    // ignore
+  }
+}
+
+function authHeaders() {
+  const auth = typeof window !== "undefined" ? getAuth() : null;
+  if (auth?.token) {
+    return { Authorization: `Bearer ${auth.token}` };
+  }
+  return {};
+}
 
 function buildError(defaultMsg, status, body) {
   const message = body?.error || `${defaultMsg}: ${status}`;
@@ -152,13 +183,50 @@ async function request(url, options = {}, defaultMsg = "Request failed", { timeo
 export async function postPredict(payload) {
   return request(apiUrl(`/predict`), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(payload)
   }, "Predict failed");
 }
 
+export async function getClientInfo() {
+  return request(apiUrl(`/client-info`), { headers: { ...authHeaders() } }, "Failed to fetch client info");
+}
+
+export async function postLogin({ username, password }) {
+  // Backward compatible: allow username, but prefer email
+  const email = username;
+  return request(apiUrl(`/auth/login`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, username, password })
+  }, "Login failed");
+}
+
+export async function postRegister({ email, password }) {
+  return request(apiUrl(`/auth/register`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password })
+  }, "Register failed");
+}
+
+export async function deleteMyLogs() {
+  return request(apiUrl(`/logs/mine`), {
+    method: "DELETE",
+    headers: { ...authHeaders() }
+  }, "Delete my logs failed");
+}
+
+export async function adminSetUserPermissions(username, { can_delete_own_logs }) {
+  return request(apiUrl(`/admin/users/${encodeURIComponent(username)}/permissions`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ can_delete_own_logs: !!can_delete_own_logs })
+  }, "Update user permissions failed");
+}
+
 async function postTrain({ data_path = null, grid = false } = {}) {
-  const headers = { "Content-Type": "application/json" };
+  const headers = { "Content-Type": "application/json", ...authHeaders() };
   if (ADMIN_TOKEN) headers["X-ADMIN-TOKEN"] = ADMIN_TOKEN;
   return request(apiUrl(`/train`), {
     method: "POST",
@@ -171,16 +239,77 @@ async function getFeaturesSchema() {
   return request(apiUrl(`/features/schema`), {}, "Failed to fetch features schema");
 }
 
-async function getLogs(limit = 25) {
-  return request(apiUrl(`/logs?limit=${limit}`), {}, "Failed to fetch logs");
+async function getLogs(limit = 25, { username = "", user_id = "" } = {}) {
+  const q = new URLSearchParams();
+  q.set("limit", String(limit));
+  if (username) q.set("username", username);
+  if (user_id !== "" && user_id !== null && user_id !== undefined) q.set("user_id", String(user_id));
+  return request(apiUrl(`/logs?${q.toString()}`), { headers: { ...authHeaders() } }, "Failed to fetch logs");
 }
 
-export async function getPublicIP() {
-  // Revert to external service; backend has no /ip route
-  const res = await fetch("https://api.ipify.org?format=json");
-  if (!res.ok) throw new Error("IP fetch failed");
-  const { ip } = await res.json();
-  return ip;
+export async function deleteLogs({ username = "", user_id = "" } = {}) {
+  const q = new URLSearchParams();
+  if (username) q.set("username", username);
+  if (user_id !== "" && user_id !== null && user_id !== undefined) q.set("user_id", String(user_id));
+  const suffix = q.toString() ? `?${q.toString()}` : "";
+  return request(apiUrl(`/logs${suffix}`), {
+    method: "DELETE",
+    headers: { ...authHeaders() }
+  }, "Delete logs failed");
+}
+
+export async function adminListUsers() {
+  return request(apiUrl(`/admin/users`), { headers: { ...authHeaders() } }, "Failed to fetch users");
+}
+
+export async function adminCreateUser({ username, password, role = "user" }) {
+  return request(apiUrl(`/admin/users`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    // Prefer email-based creation, but keep username for compatibility
+    body: JSON.stringify({ email: username, username, password, role })
+  }, "Create user failed");
+}
+
+export async function adminSetUserRoleById(userId, role) {
+  return request(apiUrl(`/admin/users/by-id/${encodeURIComponent(String(userId))}/role`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ role })
+  }, "Update user role failed");
+}
+
+export async function adminGetUserLogsById(userId, limit = 30) {
+  const q = new URLSearchParams();
+  q.set("limit", String(limit));
+  return request(
+    apiUrl(`/admin/users/by-id/${encodeURIComponent(String(userId))}/logs?${q.toString()}`),
+    { headers: { ...authHeaders() } },
+    "Failed to fetch user logs"
+  );
+}
+
+export async function adminDeleteUserLogsById(userId) {
+  return request(apiUrl(`/admin/users/by-id/${encodeURIComponent(String(userId))}/logs`), {
+    method: "DELETE",
+    headers: { ...authHeaders() }
+  }, "Delete user logs failed");
+}
+
+export async function adminSetUserRole(username, role) {
+  return request(apiUrl(`/admin/users/${encodeURIComponent(username)}/role`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ role })
+  }, "Update user role failed");
+}
+
+export async function adminSetUserPassword(username, password) {
+  return request(apiUrl(`/admin/users/${encodeURIComponent(username)}/password`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ password })
+  }, "Update user password failed");
 }
 
 export { postTrain, getFeaturesSchema, getLogs };

@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { postPredict, getPublicIP, postTrain } from "../services/api";
+import React, { useEffect, useState } from "react";
+import { postPredict, postTrain, getClientInfo } from "../services/api";
 
 function isValidUrl(s) {
   try {
@@ -12,15 +12,32 @@ function isValidUrl(s) {
 
 const UrlForm = ({ onResult }) => {
   const [url, setUrl] = useState("");
-  const [device, setDevice] = useState(navigator.platform || "");
-  const [ip, setIp] = useState("");
+  const [clientInfo, setClientInfo] = useState(null);
+  const [clientInfoLoading, setClientInfoLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [errorDetails, setErrorDetails] = useState(null);
   const [showErrDetails, setShowErrDetails] = useState(false);
-  const [autoIpEnabled, setAutoIpEnabled] = useState(false);
   const [retrainLoading, setRetrainLoading] = useState(false);
   const [retrainMsg, setRetrainMsg] = useState("");
+
+  async function loadClientInfo() {
+    setClientInfoLoading(true);
+    try {
+      const info = await getClientInfo();
+      setClientInfo(info);
+    } catch (e) {
+      // Client info is best-effort; do not block predictions
+      console.warn("Failed to fetch client info", e);
+      setClientInfo(null);
+    } finally {
+      setClientInfoLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadClientInfo();
+  }, []);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -33,21 +50,12 @@ const UrlForm = ({ onResult }) => {
     }
     setLoading(true);
     try {
-      let ipToSend = ip;
-      if (autoIpEnabled && !ip) {
-        try {
-          ipToSend = await getPublicIP();
-        } catch (err) {
-          console.warn("Auto IP failed", err);
-        }
-      }
       const payload = {
         url,
-        device,
-        ip: ipToSend,
         metadata: {
           user_agent: navigator.userAgent,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          ui_client_info: clientInfo
         }
       };
       const res = await postPredict(payload);
@@ -72,46 +80,33 @@ const UrlForm = ({ onResult }) => {
             onChange={(e) => setUrl(e.target.value)}
           />
         </div>
-        <div style={{ marginBottom: 10 }}>
-          <label className="small">Device (optional)</label>
-          <input
-            className="input"
-            value={device}
-            onChange={(e) => setDevice(e.target.value)}
-          />
-        </div>
-        <div style={{ marginBottom: 8 }}>
-          <label className="small">IP (optional)</label>
-          <div className="form-row">
-            <input
-              className="input"
-              value={ip}
-              onChange={(e) => setIp(e.target.value)}
-              placeholder="1.2.3.4"
-            />
+        <div className="client-info">
+          <div className="client-info-item">
+            <div className="small">Device</div>
+            <div className="client-info-value">
+              {clientInfoLoading ? "Detecting..." : (clientInfo?.device || "Unavailable")}
+            </div>
+          </div>
+          <div className="client-info-item">
+            <div className="small">IP Address</div>
+            <div className="client-info-value">
+              {clientInfoLoading ? "Detecting..." : (clientInfo?.ip || "Unavailable")}
+            </div>
+          </div>
+          <div className="client-info-actions">
             <button
               type="button"
               className="button secondary"
-              onClick={() => setIp("")}
+              onClick={loadClientInfo}
+              disabled={clientInfoLoading}
+              title="Refresh detected device/IP"
             >
-              Clear
+              {clientInfoLoading ? "Refreshing..." : "Refresh"}
             </button>
           </div>
         </div>
-        <div
-          style={{ marginBottom: 8, display: "flex", gap: 8, alignItems: "center" }}
-        >
-          <label className="small">
-            <input
-              type="checkbox"
-              checked={autoIpEnabled}
-              onChange={(e) => setAutoIpEnabled(e.target.checked)}
-            />{" "}
-            Auto fetch public IP (optional)
-          </label>
-        </div>
         {error && (
-          <div style={{ color: "var(--danger)", marginBottom: 8 }}>
+          <div className="error-box" style={{ marginBottom: 8 }}>
             <div><strong>Error:</strong> {error}</div>
             {errorDetails?.error_type === "ModelIncompatibleError" && (
               <div style={{ marginTop: 6 }}>
@@ -152,15 +147,7 @@ const UrlForm = ({ onResult }) => {
                 </button>
                 {showErrDetails && (
                   <pre
-                    style={{
-                      marginTop: 8,
-                      maxHeight: 200,
-                      overflow: "auto",
-                      background: "#fff4f4",
-                      padding: 8,
-                      borderRadius: 6,
-                      border: "1px solid #f0c2c2"
-                    }}
+                    className="error-pre"
                   >
                     {errorDetails.traceback
                       ? errorDetails.traceback
@@ -180,9 +167,6 @@ const UrlForm = ({ onResult }) => {
             type="button"
             onClick={() => {
               setUrl("");
-              setIp("");
-              setDevice(navigator.platform || "");
-              setAutoIpEnabled(false);
               setError("");
               setErrorDetails(null);
               setShowErrDetails(false);
